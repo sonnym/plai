@@ -88,3 +88,26 @@
                             'n
                             (add (id 'n) (id 'n)))))
       20)
+
+;; exercies 4.1.1
+;; the argument can be resolved through function applications
+(test (interp (parse '{add-1 {add-2 1}})
+              (list (fundef 'add-2
+                            'n
+                            (add (app 'add-1 (num 1)) (id 'n)))
+                    (fundef 'add-1
+                            'n
+                            (add (num 1) (id 'n)))))
+      4)
+
+
+;; exercise 4.1.2
+;; the body can be composed of other functions
+(test (interp (parse '{quadruple 5})
+              (list (fundef 'double
+                            'n
+                            (add (id 'n) (id 'n)))
+                    (fundef 'quadruple
+                            'n
+                            (add (app 'double (id 'n)) (app 'double (id 'n))))))
+      20)

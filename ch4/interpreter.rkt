@@ -6,6 +6,7 @@
   [num (n number?)]
   [add (lhs F1WAE?) (rhs F1WAE?)]
   [with (name symbol?) (named-expr F1WAE?) (body F1WAE?)]
+  [if0 (n F1WAE?) (success-cond F1WAE?) (fail-cond F1WAE?)]
   [id (name symbol?)]
   [app (fun-name symbol?) (arg F1WAE?)])
 
@@ -48,6 +49,10 @@
           (with bound-id
                 (subst named-expr sub-id val)
                 (subst bound-body sub-id val)))]
+    [if0 (cond-test success-expr fail-expr)
+         (if0 (subst cond-test sub-id val)
+              (subst success-expr sub-id val)
+              (subst fail-expr sub-id val))]
     [id (v) (if (symbol=? v sub-id) val expr)]
     [app (fun-name arg-expr)
          (app fun-name (subst arg-expr sub-id val))]))
@@ -64,6 +69,10 @@
                          bound-id
                          (num (interp named-expr fun-defs))
                   fun-defs))]
+    [if0 (cond-test success-expr fail-expr)
+         (if (equal? (interp cond-test fun-defs) 0)
+             (interp success-expr fun-defs)
+             (interp fail-expr fun-defs))]
     [id (v) (error 'interp "free identifier")]
     [app (fun-name arg-expr)
          (local ([define the-fun-def (lookup-fundef fun-name fun-defs)])
@@ -111,3 +120,14 @@
                             'n
                             (add (app 'double (id 'n)) (app 'double (id 'n))))))
       20)
+
+;; exercise 4.3.1
+(test (interp (parse '{add-up-to 100})
+              (list (fundef 'add-up-to
+                            'n
+                            (if0 (id 'n)
+                                 (num 0)
+                                 (add (id 'n)
+                                      (app 'add-up-to
+                                           (add (num -1) (id 'n))))))))
+      5050)

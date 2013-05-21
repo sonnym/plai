@@ -1,6 +1,6 @@
 #lang plai
 
-;; define FAE type
+;; define FAE, FAE-Value, and DefrdSub
 (define-type FAE
   [num (n number?)]
   [add (lhs FAE?) (rhs FAE?)]
@@ -8,8 +8,17 @@
   [fun (param symbol?) (body FAE?)]
   [app (fun-expr FAE?) (arg-expr FAE?)])
 
+(define-type FAE-Value
+  [numV (n number?)]
+  [closureV (param symbol?)
+            (body FAE?)
+            (ds DefrdSub?)])
+
+(define-type DefrdSub
+  [mtSub]
+  [aSub (name symbol?) (value FAE-Value?) (ds DefrdSub?)])
+
 ;; parse : sexp -> FAE
-;; to convert s-expressions into FAEs
 (define (parse sexp)
   (cond
     [(number? sexp) (num sexp)]
@@ -27,47 +36,48 @@
                      (parse (second (second sexp))))]
         [else [app (parse (first sexp)) (parse (second sexp))]])]))
 
-;; interp : FAE -> FAE
-;; evaluates FAE expressions by reducing them to their corresponding values
-;; return values are either number or fun
-(define (interp expr)
+;; interp : FAE -> FAE-Value
+(define (interp expr ds)
   (type-case FAE expr
-    [num (n) expr]
-    [add (l r) (add-numbers (interp l) (interp r))]
-    [id (v) (error 'interp "free identifier")]
+    [num (n) (numV n)]
+    [add (l r) (add-numbers (interp l ds) (interp r ds))]
+    [id (v) (lookup v ds)]
     [fun (bound-id bound-body)
-         expr]
+         (closureV bound-id bound-body ds)]
     [app (fun-expr arg-expr)
-         (local ([define fun-val (interp fun-expr)])
-           (interp (subst (fun-body fun-val)
-                          (fun-param fun-val)
-                          (interp arg-expr))))]))
+         (local ([define fun-val (interp fun-expr ds)])
+           (interp (closureV-body fun-val)
+                   (aSub (closureV-param fun-val)
+                         (interp arg-expr ds)
+                         (closureV-ds fun-val))))]))
 
-;; add-numbers : FAE FAE -> FAE
-(define (add-numbers x y) (num (+ (num-n x) (num-n y))))
+;; add-numbers : numV numV -> numV
+(define (add-numbers x y) (numV (+ (numV-n x) (numV-n y))))
 
-;; subst : FAE symbol FAE -> FAE
-;; substitutes second argument with third argument in first argument
-;; as per the rules of substitution; the resulting expression contains
-;; no free instances of the second argument
-(define (subst expr sub-id val)
-  (type-case FAE expr
-    [num (n) expr]
-    [add (l r) (add (subst l sub-id val)
-                    (subst r sub-id val))]
-    [id (v) (if (symbol=? v sub-id) val expr)]
-    [fun (bound-id bound-body)
-         (fun bound-id (subst bound-body sub-id val))]
-    [app (fun-name arg-expr)
-         (app (subst fun-name sub-id val) (subst arg-expr sub-id val))]))
+;; lookup : symbol DefrdSub -> FAE-Value
+(define (lookup name ds)
+  (type-case DefrdSub ds
+    [mtSub () (error 'lookup "no binding for identifier")]
+    [aSub (bound-name bound-value rest-ds)
+      (if (symbol=? bound-name name)
+          bound-value
+          (lookup name rest-ds))]))
 
 ;;
-(test (add-numbers (num 1) (num 2)) (num 3))
-(test (interp (parse '{+ 1 2})) (num 3))
-(test (interp (parse '{fun {x} x})) (fun 'x (id 'x)))
+(test (add-numbers (numV 1) (numV 2)) (numV 3))
+(test (interp (parse '{+ 1 2}) (mtSub)) (numV 3))
+(test (interp (parse '{fun {x} x}) (mtSub)) (closureV 'x (id 'x) (mtSub)))
+
 (test (interp (parse '{{{fun {x} x}
                         {fun {x} {+ x 5}}}
-                       3}))
-      (num 8))
-(test (interp (parse '{with {x 3} {fun {y} {+ x y}}}))
-      (fun 'y (add (num 3) (id 'y))))
+                       3}) (mtSub))
+      (numV 8))
+
+(test (interp (parse '{with {x 3}
+                        {with {f {fun {y} {+ x y}}}
+                          {with {x 5}
+                            {f 4}}}})
+              (mtSub)) (numV 7))
+
+(test (interp (parse '{with {x 3} {fun {y} {+ x y}}}) (mtSub))
+      (closureV 'y (add (id 'x) (id 'y)) (aSub 'x (numV 3) (mtSub))))

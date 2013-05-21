@@ -46,6 +46,8 @@
          (closureV bound-id bound-body ds)]
     [app (fun-expr arg-expr)
          (local ([define fun-val (interp fun-expr ds)])
+           (unless (closureV? fun-val)
+                   (error 'interp "function expression did not evaluate to a function ~v" fun-expr))
            (interp (closureV-body fun-val)
                    (aSub (closureV-param fun-val)
                          (interp arg-expr ds)
@@ -81,3 +83,7 @@
 
 (test (interp (parse '{with {x 3} {fun {y} {+ x y}}}) (mtSub))
       (closureV 'y (add (id 'x) (id 'y)) (aSub 'x (numV 3) (mtSub))))
+
+;; exercise 6.4.1
+(test/exn (interp (parse '{{{fun {x} x} 5} 3}) (mtSub))
+          "interp: function expression did not evaluate to a function (app (fun 'x (id 'x)) (num 5))")

@@ -15,11 +15,19 @@
             (body CFAE/L?)
             (env Env?)]
   [exprV (expr CFAE/L?)
-         (env Env?)])
+         (env Env?)
+         (cache boxed-boolean/CFAE/L-Value?)])
 
 (define-type Env
   [mtSub]
   [aSub (name symbol?) (value CFAE/L-Value?) (env Env?)])
+
+;; boxed-boolean field predicate
+(define (boxed-boolean/CFAE/L-Value? v)
+  (and (box? v)
+       (or (boolean? (unbox v))
+           (numV? (unbox v))
+           (closureV? (unbox v)))))
 
 ;; parse : sexp -> CFAE/L
 (define (parse sexp)
@@ -60,7 +68,7 @@
              (interp fail-expr env))]
     [app (fun-expr arg-expr)
          (local ([define fun-val (strict (interp fun-expr env))]
-                 [define arg-val (exprV arg-expr env)])
+                 [define arg-val (exprV arg-expr env (box false))])
            (interp (closureV-body fun-val)
                    (aSub (closureV-param fun-val)
                          arg-val
@@ -69,8 +77,15 @@
 ;; strict : CFAE/L-Value -> CFAE/L-Value (excluding exprV)
 (define (strict e)
   (type-case CFAE/L-Value e
-    [exprV (expr env)
-           (strict (interp expr env))]
+    [exprV (expr env cache)
+           (if (boolean? (unbox cache))
+               (local ([define the-value (strict (interp expr env))])
+                 (begin
+                   (set-box! cache the-value)
+                   the-value))
+               (begin
+                 (unbox cache)))]
+                  
     [else e]))
 
 ;; num+ : numV numV -> numV
@@ -117,3 +132,10 @@
 
 (test (interp (parse '{if0 0 1 {undef x}}) (mtSub)) (numV 1))
 (test (interp (parse '{if0 1 {undef x} 1}) (mtSub)) (numV 1))
+
+(test (strict-interp (parse '{with {x {+ 4 5}}
+                               {with {y {+ x x}}
+                                 {with {z y}
+                                   {with {x 4}
+                                     z}}}})
+       (mtSub)) (numV 18))

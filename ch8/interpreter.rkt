@@ -81,3 +81,21 @@
 (test (interp (parse '{with {x 3} {+ x x}}) (mtSub)) (numV 6))
 
 (test (interp (parse '{with {f {undef x}} 4}) (mtSub)) (numV 4))
+
+(test (num+ (numV 1) (numV 2)) (numV 3))
+(test (interp (parse '{+ 1 2}) (mtSub)) (numV 3))
+(test (interp (parse '{fun {x} x}) (mtSub)) (closureV 'x (id 'x) (mtSub)))
+
+(test (interp (parse '{{{fun {x} x}
+                        {fun {x} {+ x 5}}}
+                       3}) (mtSub))
+      (numV 8))
+
+(test (interp (parse '{with {x 3}
+                        {with {f {fun {y} {+ x y}}}
+                          {with {x 5}
+                            {f 4}}}})
+              (mtSub)) (numV 7))
+
+(test (interp (parse '{with {x 3} {fun {y} {+ x y}}}) (mtSub))
+      (closureV 'y (add (id 'x) (id 'y)) (aSub 'x (exprV (num 3) (mtSub)) (mtSub))))

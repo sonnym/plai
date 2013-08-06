@@ -6,6 +6,7 @@
   [add (lhs CFAE/L?) (rhs CFAE/L?)]
   [id (name symbol?)]
   [fun (param symbol?) (body CFAE/L?)]
+  [if0 (cond-expr CFAE/L?) (success-expr CFAE/L?) (fail-expr CFAE/L?)]
   [app (fun-expr CFAE/L?) (arg-expr CFAE/L?)])
 
 (define-type CFAE/L-Value
@@ -36,6 +37,9 @@
         [(with) (app (fun (first (second sexp))
                           (parse (third sexp)))
                      (parse (second (second sexp))))]
+        [(if0)  (if0 (parse (second sexp))
+                     (parse (third sexp))
+                     (parse (fourth sexp)))]
         [else [app (parse (first sexp)) (parse (second sexp))]])]))
 
 ;; interp : CFAE/L -> number
@@ -50,6 +54,10 @@
     [id (v) (lookup v env)]
     [fun (bound-id bound-body)
          (closureV bound-id bound-body env)]
+    [if0 (cond-expr success-expr fail-expr)
+         (if (equal? (strict (interp cond-expr env)) (numV 0))
+             (interp success-expr env)
+             (interp fail-expr env))]
     [app (fun-expr arg-expr)
          (local ([define fun-val (strict (interp fun-expr env))]
                  [define arg-val (exprV arg-expr env)])
@@ -106,3 +114,6 @@
 
 (test (interp (parse '{with {x 3} {fun {y} {+ x y}}}) (mtSub))
       (closureV 'y (add (id 'x) (id 'y)) (aSub 'x (exprV (num 3) (mtSub)) (mtSub))))
+
+(test (interp (parse '{if0 0 1 {undef x}}) (mtSub)) (numV 1))
+(test (interp (parse '{if0 1 {undef x} 1}) (mtSub)) (numV 1))

@@ -38,6 +38,10 @@
                      (parse (second (second sexp))))]
         [else [app (parse (first sexp)) (parse (second sexp))]])]))
 
+;; interp : CFAE/L -> number
+(define (strict-interp expr env)
+  (strict (interp expr env)))
+
 ;; interp : CFAE/L -> CFAE/L-Value
 (define (interp expr env)
   (type-case CFAE/L expr
@@ -77,6 +81,9 @@
 ;;
 (test (interp (parse '{with {x 3} x}) (mtSub))
       (exprV (num 3) (mtSub)))
+
+(test (strict-interp (parse '{with {x 3} x}) (mtSub))
+      (numV 3))
 
 (test (interp (parse '{with {x 3} {+ x x}}) (mtSub)) (numV 6))
 

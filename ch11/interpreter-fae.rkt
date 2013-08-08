@@ -10,9 +10,7 @@
 
 (define-type FAE-Value
   [numV (n number?)]
-  [closureV (param symbol?)
-            (body FAE?)
-            (env Env?)])
+  [closureV (p procedure?)])
 
 ;; Env predicate
 (define (Env? x)
@@ -55,15 +53,16 @@
     [add (l r) (add-numbers (interp l env) (interp r env))]
     [id (v) (lookup v env)]
     [fun (bound-id bound-body)
-         (closureV bound-id bound-body env)]
+         (closureV (lambda (arg-val)
+                     (interp bound-body
+                             (aSub bound-id arg-val env))))]
     [app (fun-expr arg-expr)
-         (local ([define fun-val (interp fun-expr env)])
+         (local ([define fun-val (interp fun-expr env)]
+                 [define arg-val (interp arg-expr env)])
            (unless (closureV? fun-val)
                    (error 'interp "function expression did not evaluate to a function ~v" fun-expr))
-           (interp (closureV-body fun-val)
-                   (aSub (closureV-param fun-val)
-                         (interp arg-expr env)
-                         (closureV-env fun-val))))]))
+           ((closureV-p fun-val)
+            arg-val))]))
 
 ;; add-numbers : numV numV -> numV
 (define (add-numbers x y) (numV (+ (numV-n x) (numV-n y))))

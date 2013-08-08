@@ -1,6 +1,6 @@
 #lang plai
 
-;; define FAE, FAE-Value, and Env
+;; define FAE and FAE-Value
 (define-type FAE
   [num (n number?)]
   [add (lhs FAE?) (rhs FAE?)]
@@ -14,9 +14,21 @@
             (body FAE?)
             (env Env?)])
 
-(define-type Env
-  [mtSub]
-  [aSub (name symbol?) (value FAE-Value?) (env Env?)])
+;; Env predicate
+(define (Env? x)
+  (procedure? x))
+
+;; mtSub : () -> Env
+(define (mtSub)
+  (lambda (name)
+    (error 'lookup "no binding for identifier: ~s" name)))
+
+;; aSub : symbol FAE-Value Env -> Env
+(define (aSub bound-name bound-value env)
+  (lambda (want-name)
+    (cond
+      [(symbol=? want-name bound-name) bound-value]
+      [else (lookup want-name env)])))
 
 ;; parse : sexp -> FAE
 (define (parse sexp)
@@ -36,7 +48,7 @@
                      (parse (second (second sexp))))]
         [else [app (parse (first sexp)) (parse (second sexp))]])]))
 
-;; interp : FAE -> FAE-Value
+;; interp : FAE Env -> FAE-Value
 (define (interp expr env)
   (type-case FAE expr
     [num (n) (numV n)]
@@ -56,19 +68,14 @@
 ;; add-numbers : numV numV -> numV
 (define (add-numbers x y) (numV (+ (numV-n x) (numV-n y))))
 
-;; lookup : symbol Env -> FAE-Value
+;; lookup : symbol Env -> number-or-procedure
 (define (lookup name env)
-  (type-case Env env
-    [mtSub () (error 'lookup "no binding for identifier")]
-    [aSub (bound-name bound-value rest-env)
-      (if (symbol=? bound-name name)
-          bound-value
-          (lookup name rest-env))]))
+  (env name))
 
 ;;
 (test (add-numbers (numV 1) (numV 2)) (numV 3))
 (test (interp (parse '{+ 1 2}) (mtSub)) (numV 3))
-(test (interp (parse '{fun {x} x}) (mtSub)) (closureV 'x (id 'x) (mtSub)))
+(test/pred (interp (parse '{fun {x} x}) (mtSub)) closureV?)
 
 (test (interp (parse '{{{fun {x} x}
                         {fun {x} {+ x 5}}}
@@ -81,8 +88,8 @@
                             {f 4}}}})
               (mtSub)) (numV 7))
 
-(test (interp (parse '{with {x 3} {fun {y} {+ x y}}}) (mtSub))
-      (closureV 'y (add (id 'x) (id 'y)) (aSub 'x (numV 3) (mtSub))))
+(test/pred (interp (parse '{with {x 3} {fun {y} {+ x y}}}) (mtSub))
+           closureV?)
 
 ;; exercise 6.4.1
 (test/exn (interp (parse '{{{fun {x} x} 5} 3}) (mtSub))

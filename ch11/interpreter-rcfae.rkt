@@ -33,6 +33,14 @@
       [(symbol=? want-name bound-name) bound-value]
       [else (lookup want-name env)])))
 
+;; aRecSub : symbol boxed-RCFAE-Value Env -> Env
+(define (aRecSub bound-name boxed-bound-value env)
+  (lambda (want-name)
+    (cond
+      [(symbol=? want-name bound-name)
+        (unbox boxed-bound-value)]
+      [else (lookup want-name env)])))
+
 ;; parse : sexp -> RCFAE
 (define (parse sexp)
   (cond
@@ -102,15 +110,11 @@
 
 ;; cyclically-bind-and-interp : symbol fun env -> env
 (define (cyclically-bind-and-interp bound-name named-expr env)
-  (local ([define rec-ext-env
-            (lambda (want-name)
-              (cond
-                [(symbol=? want-name bound-name)
-                  (closureV (fun-param named-expr)
-                            (fun-body named-expr)
-                            rec-ext-env)]
-                [else (lookup want-name env)]))])
-    rec-ext-env))
+  (local ([define value-holder (box (numV 1729))]
+          [define new-env (aRecSub bound-name value-holder env)]
+          [define named-expr-val (interp named-expr new-env)])
+    (set-box! value-holder named-expr-val)
+    new-env))
 
 ;;
 (test (interp (parse '{if0 {+ 5 -5} 1 2}) (mtSub)) (numV 1))

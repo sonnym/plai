@@ -13,9 +13,7 @@
 
 (define-type RCFAE-Value
   [numV (n number?)]
-  [closureV (param symbol?)
-            (body RCFAE?)
-            (env Env?)])
+  [closureV (p procedure?)])
 
 ;; Env predicate
 (define (Env? x)
@@ -80,15 +78,16 @@
              (interp falsity env))]
     [id (v) (lookup v env)]
     [fun (bound-id bound-body)
-         (closureV bound-id bound-body env)]
+         (closureV (lambda (arg-val)
+                     (interp bound-body
+                             (aSub bound-id arg-val env))))]
     [app (fun-expr arg-expr)
-         (local ([define fun-val (interp fun-expr env)])
+         (local ([define fun-val (interp fun-expr env)]
+                 [define arg-val (interp arg-expr env)])
            (unless (closureV? fun-val)
                    (error 'interp "function expression did not evaluate to a function ~v" fun-expr))
-           (interp (closureV-body fun-val)
-                   (aSub (closureV-param fun-val)
-                         (interp arg-expr env)
-                         (closureV-env fun-val))))]
+           ((closureV-p fun-val)
+            arg-val))]
     [rec (bound-id named-expr bound-body)
          (interp bound-body
                  (cyclically-bind-and-interp bound-id
@@ -139,3 +138,22 @@
                        {fac 5}})
               (mtSub))
       (numV 120))
+
+(test/pred (interp (parse '{fun {x} x}) (mtSub)) closureV?)
+
+(test (interp (parse '{{{fun {x} x}
+                        {fun {x} {+ x 5}}}
+                       3}) (mtSub))
+      (numV 8))
+
+(test (interp (parse '{with {x 3}
+                        {with {f {fun {y} {+ x y}}}
+                          {with {x 5}
+                            {f 4}}}})
+              (mtSub)) (numV 7))
+
+(test/pred (interp (parse '{with {x 3} {fun {y} {+ x y}}}) (mtSub))
+           closureV?)
+
+(test/exn (interp (parse '{{{fun {x} x} 5} 3}) (mtSub))
+          "interp: function expression did not evaluate to a function (app (fun 'x (id 'x)) (num 5))")

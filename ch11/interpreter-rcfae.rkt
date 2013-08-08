@@ -1,6 +1,6 @@
 #lang plai
 
-;; define RCFAE, RCFAE-Value, and Env
+;; define RCFAE and RCFAE-Value
 (define-type RCFAE
   [num (n number?)]
   [add (lhs RCFAE?) (rhs RCFAE?)]
@@ -17,19 +17,21 @@
             (body RCFAE?)
             (env Env?)])
 
-(define-type Env
-  [mtSub]
-  [aSub (name symbol?)
-        (value RCFAE-Value?)
-        (env Env?)]
-  [aRecSub (name symbol?)
-           (value boxed-RCFAE-Value?)
-           (env Env?)])
+;; Env predicate
+(define (Env? x)
+  (procedure? x))
 
-;; aRecSub value predicate
-(define (boxed-RCFAE-Value? v)
-  (and (box? v)
-       (RCFAE-Value? (unbox v))))
+;; mtSub : () -> Env
+(define (mtSub)
+  (lambda (name)
+    (error 'lookup "no binding for identifier: ~s" name)))
+
+;; aSub : symbol RCFAE-Value Env -> Env
+(define (aSub bound-name bound-value env)
+  (lambda (want-name)
+    (cond
+      [(symbol=? want-name bound-name) bound-value]
+      [else (lookup want-name env)])))
 
 ;; parse : sexp -> RCFAE
 (define (parse sexp)
@@ -96,24 +98,19 @@
 
 ;; lookup : symbol Env -> RCFAE-Value
 (define (lookup name env)
-  (type-case Env env
-    [mtSub () (error 'lookup "no binding for identifier: ~s" name)]
-    [aSub (bound-name bound-value rest-env)
-      (if (symbol=? bound-name name)
-          bound-value
-          (lookup name rest-env))]
-    [aRecSub (bound-name boxed-bound-value rest-env)
-      (if (symbol=? bound-name name)
-          (unbox boxed-bound-value)
-          (lookup name rest-env))]))
+  (env name))
 
 ;; cyclically-bind-and-interp : symbol fun env -> env
-(define (cyclically-bind-and-interp bound-id named-expr env)
-  (local ([define value-holder (box (numV 1729))]
-          [define new-env (aRecSub bound-id value-holder env)]
-          [define named-expr-val (interp named-expr new-env)])
-      (set-box! value-holder named-expr-val)
-      new-env))
+(define (cyclically-bind-and-interp bound-name named-expr env)
+  (local ([define rec-ext-env
+            (lambda (want-name)
+              (cond
+                [(symbol=? want-name bound-name)
+                  (closureV (fun-param named-expr)
+                            (fun-body named-expr)
+                            rec-ext-env)]
+                [else (lookup want-name env)]))])
+    rec-ext-env))
 
 ;;
 (test (interp (parse '{if0 {+ 5 -5} 1 2}) (mtSub)) (numV 1))

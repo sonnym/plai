@@ -147,12 +147,17 @@
               value
               (store-lookup loc-index rest-store))]))
 
-(define next-location
-  (local ([define last-loc (box -1)])
-    (lambda (store)
-      (begin
-        (set-box! last-loc (+ 1 (unbox last-loc)))
-          (unbox last-loc)))))
+;; next-location : Store -> number
+(define (next-location sto)
+  (+ 1 (current-location sto)))
+
+;; current-location : Store -> number
+(define (current-location sto)
+  (type-case Store sto
+    [mtSto () -1]
+    [aSto (location value rest-store) 
+      (local ([define other-loc (current-location rest-store)])
+        (if (> location other-loc) location other-loc))]))
 
 ;;
 (test (interp (parse '{newbox 0}) (mtSub) (mtSto))

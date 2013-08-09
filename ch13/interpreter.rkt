@@ -11,7 +11,7 @@
   [newbox (box-val BCFAE?)]
   [setbox (box-expr BCFAE?) (value-exr BCFAE?)]
   [openbox (box-expr BCFAE?)]
-  [seqn (sequent1 BCFAE?) (sequent2 BCFAE?)])
+  [seqn (sequents list?)])
 
 (define-type BCFAE-Value
   [numV (n number?)]
@@ -58,8 +58,7 @@
         [(setbox) (setbox (parse (second sexp))
                           (parse (third sexp)))]
         [(openbox) (openbox (parse (second sexp)))]
-        [(seqn) (seqn (parse (second sexp))
-                      (parse (third sexp)))]
+        [(seqn) (seqn (map parse (cdr sexp)))]
         [else [app (parse (first sexp)) (parse (second sexp))]])]))
 
 ;; interp : BCFAE Env -> ValuexStore
@@ -103,10 +102,8 @@
                  (vxs (store-lookup (boxV-location box-value)
                                      box-store)
                       box-store)])]
-    [seqn (e1 e2)
-          (type-case ValuexStore (interp e1 env store)
-            [vxs (e1-value e1-store)
-              (interp e2 env e1-store)])]
+    [seqn (sequents)
+          (apply-sequents sequents env store)]
     [app (fun-expr arg-expr)
          (type-case ValuexStore (interp fun-expr env store)
            [vxs (fun-value fun-store)
@@ -158,6 +155,14 @@
     [aSto (location value rest-store) 
       (local ([define other-loc (current-location rest-store)])
         (if (> location other-loc) location other-loc))]))
+
+;; apply-sequents : list Env Store -> ValuexStore
+(define (apply-sequents sequents env store)
+  (type-case ValuexStore (interp (car sequents) env store)
+    [vxs (sequent-value sequent-store)
+      (if (empty? (cdr sequents))
+          (vxs sequent-value sequent-store)
+          (apply-sequents (cdr sequents) env sequent-store))]))
 
 ;;
 (test (interp (parse '{newbox 0}) (mtSub) (mtSto))
@@ -216,3 +221,11 @@
                                         {toggle 1729}}}})
                          (mtSub) (mtSto)))
       (numV 1))
+
+(test (vxs-value (interp (parse '{with {this-box {newbox 0}}
+                                   {seqn
+                                     {setbox this-box 1}
+                                     {setbox this-box 2}
+                                     {setbox this-box 3}}})
+                         (mtSub) (mtSto)))
+      (numV 3))

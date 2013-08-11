@@ -60,26 +60,33 @@
                    (parse (second sexp))]])]))
 
 ;; interp : KCFAE Env -> KCFAE-Value
-(define (interp expr env)
-  (type-case RCFAE expr
-    [num (n) (numV n)]
-    [add (l r) (num+ (interp l env) (interp r env))]
+(define (interp expr env k)
+  (type-case KCFAE expr
+    [num (n) (k (numV n))]
+    [add (l r) (interp l env
+                       (lambda (lv)
+                         (interp r env
+                                 (lambda (rv)
+                                   (k (num+ lv rv))))))]
     [if0 (test truth falsity)
-         (if (num-zero? (interp test env))
-             (interp truth env)
-             (interp falsity env))]
-    [id (v) (lookup v env)]
-    [fun (bound-id bound-body)
-         (closureV (lambda (arg-val)
-                     (interp bound-body
-                             (aSub bound-id arg-val env))))]
+         (interp test env
+                 (lambda (tv)
+                   (if (num-zero? tv)
+                       (interp truth env k)
+                       (interp falsity env k))))]
+    [id (v) (k (lookup v env))]
+    [fun (param body)
+         (k (closureV (lambda (arg-val dyn-k)
+                      (interp body (aSub param arg-val env) dyn-k))))]
     [app (fun-expr arg-expr)
-         (local ([define fun-val (interp fun-expr env)]
-                 [define arg-val (interp arg-expr env)])
-           (unless (closureV? fun-val)
-                   (error 'interp "function expression did not evaluate to a function ~v" fun-expr))
-           ((closureV-p fun-val)
-            arg-val))]))
+         (interp fun-expr env
+                 (lambda (fun-val)
+                   (interp arg-expr env
+                           (lambda (arg-val)
+                             (unless (closureV? fun-val)
+                               (error 'interp "function expression did not evaluate to a function ~v" fun-expr))
+                             ((closureV-p fun-val)
+                              arg-val k)))))]))
 
 ;; num+ : numV numV -> numV
 (define (num+ n1 n2) (numV (+ (numV-n n1) (numV-n n2))))
@@ -90,3 +97,11 @@
 ;; lookup : symbol Env -> KCFAE-Value
 (define (lookup name env)
   (env name))
+
+;;
+(define (interp-test p v)
+  (interp (parse p) (mtSub) (lambda (k) (test k v))))
+
+(interp-test '5 (numV 5))
+(interp-test '{+ 5 5} (numV 10))
+(interp-test '{with {x {+ 5 5}} {+ x x}} (numV 20))

@@ -7,11 +7,13 @@
   [id (name symbol?)]
   [fun (param symbol?) (body KCFAE?)]
   [app (fun-expr KCFAE?) (arg-expr KCFAE?)]
+  [bindcc (cont-var symbol?) (body KCFAE?)]
   [if0 (cond-expr KCFAE?) (succ-expr KCFAE?) (fail-expr KCFAE?)])
 
 (define-type KCFAE-Value
   [numV (n number?)]
-  [closureV (p procedure?)])
+  [closureV (p procedure?)]
+  [contV (p procedure?)])
 
 ;; Env predicate
 (define (Env? x)
@@ -53,6 +55,8 @@
         [(with) (app (fun (first (second sexp))
                           (parse (third sexp)))
                      (parse (second (second sexp))))]
+        [(bindcc) (bindcc (second sexp)
+                          (parse (third sexp)))]
         [(if0) [if0 (parse (second sexp))
                     (parse (third sexp))
                     (parse (fourth sexp))]]
@@ -78,15 +82,22 @@
     [fun (param body)
          (k (closureV (lambda (arg-val dyn-k)
                       (interp body (aSub param arg-val env) dyn-k))))]
+    [bindcc (cont-var body) 
+            (interp body
+                    (aSub cont-var
+                          (contV (lambda (val)
+                                   (k val)))
+                          env)
+                    k)]
     [app (fun-expr arg-expr)
          (interp fun-expr env
                  (lambda (fun-val)
                    (interp arg-expr env
                            (lambda (arg-val)
-                             (unless (closureV? fun-val)
-                               (error 'interp "function expression did not evaluate to a function ~v" fun-expr))
-                             ((closureV-p fun-val)
-                              arg-val k)))))]))
+                             (type-case KCFAE-Value fun-val
+                               [closureV (c) (c arg-val k)]
+                               [contV (c) (c arg-val)]
+                               [else (error "not an applicable value")])))))]))
 
 ;; num+ : numV numV -> numV
 (define (num+ n1 n2) (numV (+ (numV-n n1) (numV-n n2))))
@@ -105,3 +116,35 @@
 (interp-test '5 (numV 5))
 (interp-test '{+ 5 5} (numV 10))
 (interp-test '{with {x {+ 5 5}} {+ x x}} (numV 20))
+
+(interp-test '{with {x 0}
+                {bindcc adder {+ 1 x}}} 
+             (numV 1))
+
+(interp-test '{bindcc k 3} (numV 3))
+(interp-test '{bindcc k {k 3}} (numV 3))
+(interp-test '{bindcc k {+ 1 {k 3}}} (numV 3))
+(interp-test '{+ 1 {bindcc k {+ 1 {k 3}}}} (numV 4))
+
+(interp-test '{{bindcc k 
+                       {k {fun {dummy}
+                               3}}}
+               1729}
+             (numV 3)) 
+
+(interp-test '{bindcc k
+                      {k
+                       {k
+                        {k 3}}}}
+             (numV 3))
+
+(interp-test '{{{bindcc k k}
+                {fun {x} x}}
+               3}
+             (numV 3))
+
+(interp-test '{{{{bindcc k k}
+                 {fun {x} x}}
+                {fun {x} x}}
+               3}
+             (numV 3))

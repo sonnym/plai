@@ -6,8 +6,8 @@
   [add (lhs RVCFAE?) (rhs RVCFAE?)]
   [id (name symbol?)]
   [fun (param symbol?) (body RVCFAE?)]
-  [refun (param symbol?) (body RVCFAE?)]
   [app (fun-expr RVCFAE?) (arg-expr RVCFAE?)]
+  [ref-app (fun-expr RVCFAE?) (arg-expr RVCFAE?)]
   [if0 (cond-expr RVCFAE?) (succ-expr RVCFAE?) (fail-expr RVCFAE?)]
   [setv (var symbol?) (value-expr RVCFAE?)]
   [seqn (sequents list?)])
@@ -15,9 +15,6 @@
 (define-type RVCFAE-Value
   [numV (n number?)]
   [closureV (param symbol?)
-            (body RVCFAE?)
-            (env Env?)]
-  [refclosV (param symbol?)
             (body RVCFAE?)
             (env Env?)])
 
@@ -49,8 +46,6 @@
                   (parse (- (third sexp))))]
         [(fun) (fun (first (second sexp))
                     (parse (third sexp)))]
-        [(refun) (refun (first (second sexp))
-                        (parse (third sexp)))]
         [(with) (app (fun (first (second sexp))
                           (parse (third sexp)))
                      (parse (second (second sexp))))]
@@ -60,7 +55,11 @@
         [(setv) (setv (second sexp)
                       (parse (third sexp)))]
         [(seqn) (seqn (map parse (cdr sexp)))]
-        [else [app (parse (first sexp)) (parse (second sexp))]])]))
+        [else (local ([define arg-expr (second sexp)])
+                (if (and (list? arg-expr) (symbol=? 'ref (first arg-expr)))
+                    [ref-app (parse (first sexp)) (parse (second arg-expr))]
+                    [app (parse (first sexp)) (parse arg-expr)]))])]))
+
 
 ;; interp : RVCFAE Env -> ValuexStore
 (define (interp expr env store)
@@ -82,8 +81,6 @@
     [id (v) (vxs (store-lookup (env-lookup v env) store) store)]
     [fun (bound-id bound-body)
          (vxs (closureV bound-id bound-body env) store)]
-    [refun (bound-id bound-body)
-           (vxs (refclosV bound-id bound-body env) store)]
     [setv (var value)
          (type-case ValuexStore (interp value env store)
            [vxs (value-value value-store)
@@ -95,26 +92,25 @@
     [app (fun-expr arg-expr)
          (type-case ValuexStore (interp fun-expr env store)
            [vxs (fun-value fun-store)
-                (type-case RVCFAE-Value fun-value
-                  [closureV (cl-param cl-body cl-env)
-                            (type-case ValuexStore (interp arg-expr env fun-store)
-                              [vxs (arg-value arg-store)
-                                (local ([define new-loc (next-location arg-store)])
-                                  (interp cl-body
-                                          (aSub cl-param
-                                                new-loc
-                                                cl-env)
-                                          (aSto new-loc
-                                                arg-value
-                                                arg-store)))])]
-                  [refclosV (cl-param cl-body cl-env)
-                            (local ([define arg-loc (env-lookup (id-name arg-expr) env)])
-                              (interp cl-body
-                                      (aSub cl-param
-                                           arg-loc
-                                           cl-env)
-                                      fun-store))]
-                  [numV (..) (error 'interp "trying to apply a number")])])]))
+                (type-case ValuexStore (interp arg-expr env fun-store)
+                  [vxs (arg-value arg-store)
+                    (local ([define new-loc (next-location arg-store)])
+                      (interp (closureV-body fun-value)
+                              (aSub (closureV-param fun-value)
+                                    new-loc
+                                    (closureV-env fun-value))
+                              (aSto new-loc
+                                    arg-value
+                                    arg-store)))])])]
+    [ref-app (fun-expr arg-expr)
+             (type-case ValuexStore (interp fun-expr env store)
+               [vxs (fun-value fun-store)
+                    (local ([define arg-loc (env-lookup (id-name arg-expr) env)])
+                      (interp (closureV-body fun-value)
+                              (aSub (closureV-param fun-value)
+                                    arg-loc
+                                    (closureV-env fun-value))
+                              fun-store))])]))
 
 ;; num+ : numV numV -> numV
 (define (num+ n1 n2) (numV (+ (numV-n n1) (numV-n n2))))
@@ -170,9 +166,21 @@
       (numV 0))
 
 (test (vxs-value (interp (parse '{with {v 0}
-                                   {with {f {refun {y}
+                                   {with {f {fun {y}
                                               {setv y 5}}}
-                                     {seqn {f v}
+                                     {seqn {f {ref v}}
                                            v}}})
                          (mtSub) (mtSto)))
       (numV 5))
+
+(test (vxs-value (interp (parse '{with {swap {fun {x}
+                                    {fun {y}
+                                      {with {z x}
+                                        {seqn {setv x y}
+                                              {setv y z}}}}}}
+                        {with {a 3}
+                          {with {b 2}
+                            {seqn {{swap {ref a}} {ref b}}
+                              b}}}})
+              (mtSub) (mtSto)))
+      (numV 3))
